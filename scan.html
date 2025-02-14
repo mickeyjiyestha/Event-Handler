@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>QR Code Scanner</title>
+    <script src="https://cdn.jsdelivr.net/npm/jsqr/dist/jsQR.js"></script>
+    <style>
+      /* Reset default browser styles */
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      /* General page styling */
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f4f4f9;
+        color: #333;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      h1 {
+        font-size: 2rem;
+        color: #4caf50;
+        margin-bottom: 20px;
+        text-align: center;
+      }
+
+      /* Video container */
+      .video-container {
+        position: relative;
+        width: 100%;
+        max-width: 400px;
+        margin-bottom: 20px;
+        border: 2px solid #4caf50;
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      }
+
+      video {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+
+      /* QR Code detection overlay */
+      .overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        pointer-events: none;
+      }
+
+      .overlay::before {
+        content: "";
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        bottom: 10px;
+        border: 2px dashed #4caf50;
+        border-radius: 10px;
+        animation: pulse 1.5s infinite ease-in-out;
+      }
+
+      @keyframes pulse {
+        0% {
+          transform: scale(1);
+          opacity: 0.7;
+        }
+        50% {
+          transform: scale(1.02);
+          opacity: 1;
+        }
+        100% {
+          transform: scale(1);
+          opacity: 0.7;
+        }
+      }
+
+      /* Output message */
+      #output {
+        font-size: 1rem;
+        color: #555;
+        text-align: center;
+        margin-top: 20px;
+        padding: 10px;
+        border-radius: 5px;
+        background-color: #fff;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        transition: all 0.3s ease;
+      }
+
+      #output.success {
+        color: #4caf50;
+        background-color: #e8f5e9;
+      }
+
+      #output.error {
+        color: #f44336;
+        background-color: #ffebee;
+      }
+
+      /* Responsive design */
+      @media (max-width: 600px) {
+        h1 {
+          font-size: 1.5rem;
+        }
+
+        .video-container {
+          max-width: 300px;
+        }
+
+        #output {
+          font-size: 0.9rem;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Scan QR Code</h1>
+    <div class="video-container">
+      <video id="video" autoplay></video>
+      <div class="overlay"></div>
+    </div>
+    <div id="output">Arahkan QR Code ke Kamera untuk memindai.</div>
+
+    <script>
+      const video = document.getElementById("video");
+      const output = document.getElementById("output");
+
+      // Akses webcam
+      navigator.mediaDevices
+        .getUserMedia({ video: { facingMode: "environment" } })
+        .then((stream) => {
+          video.srcObject = stream;
+          video.play();
+        })
+        .catch((err) => {
+          console.error("Error accessing the camera: ", err);
+          output.textContent = "Camera not accessible.";
+          output.classList.add("error");
+        });
+
+      // Proses frame dari webcam untuk memindai QR Code
+      function scanQRCode() {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("2d");
+
+        // Sesuaikan ukuran canvas dengan video
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+
+        // Gambar frame dari video ke canvas
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        // Konversi gambar ke array pixel
+        const imageData = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height
+        );
+        const qrCode = jsQR(imageData.data, canvas.width, canvas.height);
+
+        if (qrCode) {
+          output.textContent = `QR Code detected: ${qrCode.data}`;
+          output.classList.remove("error");
+          output.classList.add("success");
+          sendQRCodeToServer(qrCode.data); // Kirim data ke server
+        } else {
+          requestAnimationFrame(scanQRCode); // Coba lagi
+        }
+      }
+
+      // Kirim data QR Code ke server Flask
+      function sendQRCodeToServer(data) {
+        fetch("http://127.0.0.1:5000/scan_qr", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data }),
+        })
+          .then((response) => response.json())
+          .then((result) => {
+            if (result.message) {
+              output.textContent = result.message;
+              output.classList.add("success");
+            } else if (result.error) {
+              output.textContent = result.error;
+              output.classList.add("error");
+            }
+          })
+          .catch((error) => {
+            console.error("Error:", error);
+            output.textContent = "Failed to send data to server.";
+            output.classList.add("error");
+          });
+      }
+
+      // Mulai memindai QR Code
+      video.onloadedmetadata = () => {
+        scanQRCode();
+      };
+    </script>
+  </body>
+</html>
